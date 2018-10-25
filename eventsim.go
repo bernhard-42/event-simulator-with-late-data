@@ -4,14 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 
 	"./kafkaprod"
-	"github.com/buger/jsonparser"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -20,8 +17,25 @@ import (
 const mobileRatio = 0.75
 const bufferdRatio = 0.3
 
-var topic = "sessions"
+var topic string
 var producer kafkaprod.KafkaProducer
+
+func init() {
+	/* Initialize random generator */
+	// rand.Seed(time.Now().UTC().UnixNano())
+	rand.Seed(44)
+
+	var configFile = flag.String("config", "./config.json", "config json file")
+
+	/* Initialize logging */
+	logLevel, logFile := GetLoggingConfig(*configFile)
+	log.SetLevel(logLevel)
+	log.SetOutput(logFile)
+
+	/* Initialize Kafka Producer */
+	broker, topic := GetKafkaConfig(*configFile)
+	producer = kafkaprod.Create(broker, topic)
+}
 
 type metadata struct {
 	kind                string
@@ -46,56 +60,6 @@ type event struct {
 	SessionID  string
 	ID         int
 	Data       data
-}
-
-func init() {
-	/* Initialize random generator */
-
-	// rand.Seed(time.Now().UTC().UnixNano())
-	rand.Seed(44)
-
-	var configFile = flag.String("config", "./config.json", "config json file")
-
-	/* Initialize logging */
-	if config, err := ioutil.ReadFile(*configFile); err == nil {
-		var logFile *os.File
-		if f, err := jsonparser.GetString(config, "logging", "logFile"); err == nil {
-			switch f {
-			case "stdout":
-				logFile = os.Stdout
-			default:
-				logFile, err = os.Create(f)
-				if err != nil {
-					fmt.Printf("Cannot open file %s, logging to os.Stdout", *configFile)
-					logFile = os.Stdout
-				}
-			}
-		}
-		log.SetOutput(logFile)
-
-		if l, err := jsonparser.GetString(config, "logging", "logLevel"); err == nil {
-			switch l {
-			case "info":
-				log.SetLevel(log.InfoLevel)
-				fmt.Println("InfoLevel")
-			case "warn":
-				log.SetLevel(log.WarnLevel)
-				fmt.Println("WarnLevel")
-			case "error":
-				log.SetLevel(log.ErrorLevel)
-				fmt.Println("ErrorLevel")
-			case "debug":
-				log.SetLevel(log.DebugLevel)
-				fmt.Println("DebugLevel")
-			default:
-				log.SetLevel(log.InfoLevel)
-				fmt.Println("InfoLevel")
-			}
-		}
-	} else {
-		log.SetOutput(os.Stdout)
-		log.SetLevel(log.InfoLevel)
-	}
 }
 
 func start() event {
@@ -181,8 +145,6 @@ func session(wg *sync.WaitGroup, wait float32) {
 }
 
 func main() {
-	producer = kafkaprod.Create("master1:6667", "sessions")
-
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)

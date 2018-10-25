@@ -2,9 +2,7 @@ package kafkaprod
 
 import (
 	"fmt"
-	"io/ioutil"
 
-	"github.com/buger/jsonparser"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,14 +16,9 @@ type KafkaProducer struct {
 // Create is the factory function to create KafkaProducer instance
 func Create(broker string, topic string) KafkaProducer {
 	var producer *kafka.Producer
-	if config, err := ioutil.ReadFile("./config.json"); err == nil {
-		if broker, err := jsonparser.GetString(config, "kafka", "broker"); err == nil {
-			producer, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": broker})
-		} else {
-			panic(err)
-		}
-	} else {
-		panic(err)
+	producer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": broker})
+	if err != nil {
+		log.Panic("Cannot connect to Kafka")
 	}
 
 	// Delivery report handler for produced messages
