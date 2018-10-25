@@ -14,18 +14,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const mobileRatio = 0.75
-const bufferdRatio = 0.3
+var (
+	goroutines int
 
-var topic string
-var producer kafkaprod.KafkaProducer
+	producer kafkaprod.KafkaProducer
+
+	mobileRatio         float64
+	bufferdRatio        float64
+	avgNwDelayMs        int
+	avgNumEvents        int
+	minNumEvents        int
+	avgEventIntervalMs  int
+	eventIntervalStddev int
+	avgBufferedDelayMs  int
+)
 
 func init() {
-	/* Initialize random generator */
-	// rand.Seed(time.Now().UTC().UnixNano())
-	rand.Seed(44)
-
 	var configFile = flag.String("config", "./config.json", "config json file")
+	flag.Parse()
 
 	/* Initialize logging */
 	logLevel, logFile := GetLoggingConfig(*configFile)
@@ -35,16 +41,24 @@ func init() {
 	/* Initialize Kafka Producer */
 	broker, topic := GetKafkaConfig(*configFile)
 	producer = kafkaprod.Create(broker, topic)
+
+	/* Initialize global config */
+	var seed int64
+	goroutines, seed = GetGlobalConfig(*configFile)
+	rand.Seed(seed)
+
+	/* Initialize Model Parameters*/
+	mobileRatio, bufferdRatio, avgNwDelayMs, avgNumEvents, minNumEvents,
+		avgEventIntervalMs, eventIntervalStddev, avgBufferedDelayMs = GetModel(*configFile)
 }
 
 type metadata struct {
-	kind                string
-	avgNwDelay          time.Duration
+	avgNwDelayMs        int
 	numEvents           int
-	avgEventInterval    float64
+	avgEventIntervalMs  int
 	eventIntervalStddev float64
 	buffered            bool
-	bufferedDelay       time.Duration
+	bufferedDelayMs     int
 	bufferedNumEvents   int
 	bufferedStart       int
 }
@@ -54,49 +68,61 @@ type data struct {
 }
 
 type event struct {
-	metadata   metadata
-	Timestamp  int64
-	Timestring string
-	SessionID  string
-	ID         int
-	Data       data
+	metadata      metadata
+	Kind          string
+	ClientID      int
+	Timestamp     int64
+	Timestring    string
+	SessionID     string
+	ID            int
+	Data          data
+	SentTimestamp int64
 }
 
-func start() event {
+func sleep(millisec int) {
+	delay := time.Duration(millisec) * time.Millisecond
+	time.Sleep(delay)
+}
+
+func timestamp() (time.Time, int64) {
+	now := time.Now()
+	return now, now.UnixNano() / 1000000
+}
+
+func start(clientID int) event {
 	kind := "d"
-	if rand.Float32() < mobileRatio {
+	if rand.Float64() < mobileRatio {
 		kind = "m"
 	}
-	avgNwDelay := time.Duration(rand.Float64() / 100)
-	numEvents := rand.Intn(50)
-	avgEventInterval := 5.0
-	eventIntervalStddev := 0.3
-	buffered := rand.Float32() < bufferdRatio
-	bufferedDelay := time.Duration(200.0 / 3.0 * rand.Float64())
+	nwDelayMs := rand.Intn(avgNwDelayMs)
+	numEvents := rand.Intn(avgNumEvents) + minNumEvents
+	buffered := (kind == "m") && (rand.Float64() < bufferdRatio)
+	bufferedDelayMs := 0
 	bufferedStart := 0
 	bufferedNumEvents := 0
 	if buffered {
+		bufferedDelayMs = rand.Intn(avgBufferedDelayMs)
 		bufferedStart = int(float64(numEvents) * rand.Float64())
 		bufferedNumEvents = numEvents - bufferedStart
 	}
-	metadata := metadata{kind, avgNwDelay, numEvents, avgEventInterval, eventIntervalStddev,
-		buffered, bufferedDelay, bufferedNumEvents, bufferedStart}
+	metadata := metadata{nwDelayMs, numEvents, avgEventIntervalMs, float64(eventIntervalStddev),
+		buffered, bufferedDelayMs, bufferedNumEvents, bufferedStart}
 	sessionID := fmt.Sprint(uuid.Must(uuid.NewV4()))
 	ID := 0
 
-	return event{metadata, 0, "", sessionID, ID, data{""}}
+	return event{metadata, kind, clientID, 0, "", sessionID, ID, data{""}, 0}
 }
 
 func (ev *event) emit() {
-	now := time.Now()
-	ev.Timestamp = now.UnixNano() / 1000000
+	var now time.Time
+	now, ev.Timestamp = timestamp()
 	ev.Timestring = now.Format(time.RFC3339)
 	ev.ID++
 	ev.Data = data{"hello world"}
 }
 
 func (ev event) delay(buffer map[string][]event) event {
-	delay := time.Duration(rand.NormFloat64()*ev.metadata.eventIntervalStddev*ev.metadata.avgEventInterval + ev.metadata.avgEventInterval)
+	delay := int(rand.NormFloat64()*ev.metadata.eventIntervalStddev) + ev.metadata.avgEventIntervalMs // simulate intervals between clicks
 
 	if ev.metadata.buffered && ev.ID >= ev.metadata.bufferedStart {
 		_, ok := buffer[ev.SessionID]
@@ -106,50 +132,58 @@ func (ev event) delay(buffer map[string][]event) event {
 		}
 		buffer[ev.SessionID] = append(buffer[ev.SessionID], ev)
 		if ev.ID == ev.metadata.numEvents {
-			time.Sleep(ev.metadata.bufferedDelay * time.Second)
+			sleep(ev.metadata.bufferedDelayMs)
 			for _, ev2 := range buffer[ev.SessionID] {
 				ev2.publish()
 			}
 		} else {
-			time.Sleep(delay * time.Second)
+			sleep(delay)
 		}
 	} else {
 		ev.publish()
-		time.Sleep(delay * time.Second)
+		sleep(delay)
 	}
+
 	return ev
 }
 
 func (ev event) publish() {
+	sleep(ev.metadata.avgNwDelayMs) // Simulate network delay
+	_, ev.SentTimestamp = timestamp()
 	bytes, err := json.Marshal(ev)
 	if err != nil {
 		log.Error(err)
 	} else {
-		time.Sleep(ev.metadata.avgNwDelay)
 		producer.Send(bytes)
 	}
 }
 
-func session(wg *sync.WaitGroup, wait float32) {
+func session(wg *sync.WaitGroup, clientID int, wait int) {
 	var buffer = make(map[string][]event)
 	defer wg.Done()
-	time.Sleep(time.Duration(wait) * time.Second)
-
-	ev := start()
-	log.Debug(spew.Sprintf("Session start: %+v", ev.metadata))
+	sleep(wait)
+	ev := start(clientID)
+	log.Debug(spew.Sprintf("Session (clientID %d) started: %+v", clientID, ev.metadata))
 
 	for i := 0; i < ev.metadata.numEvents; i++ {
 		ev.emit()
 		ev.delay(buffer)
 	}
+	log.Debug(spew.Sprintf("Session (clientID %d) stopped", clientID))
 }
 
 func main() {
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+
+	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
-		go session(&wg, 30*rand.Float32())
+		startDelay := 0
+		if goroutines > 1 {
+			startDelay = rand.Intn(30000)
+		}
+		go session(&wg, i, startDelay)
 	}
+	log.Debug("started all")
 	wg.Wait()
 	log.Info("Done")
 }
