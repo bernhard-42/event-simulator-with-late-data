@@ -1,0 +1,11 @@
+{
+    "logging": {
+        "logLevel": "debug",
+        "logFile": "stdout"
+    },
+    "kafka": {
+        "topic": "sessions",
+        "broker": "master1:6667",
+        "partitions": 1
+    }
+}

@@ -2,8 +2,9 @@ package kafkaprod
 
 import (
 	"fmt"
-	"os"
+	"io/ioutil"
 
+	"github.com/buger/jsonparser"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	log "github.com/sirupsen/logrus"
 )
@@ -15,13 +16,15 @@ type KafkaProducer struct {
 }
 
 // Create is the factory function to create KafkaProducer instance
-func Create(broker string, topic string, logLevel log.Level, logFile *os.File) KafkaProducer {
-	producer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": broker})
-	log.SetOutput(logFile)
-	log.SetLevel(logLevel)
-
-	if err != nil {
-		fmt.Println(err)
+func Create(broker string, topic string) KafkaProducer {
+	var producer *kafka.Producer
+	if config, err := ioutil.ReadFile("./config.json"); err == nil {
+		if broker, err := jsonparser.GetString(config, "kafka", "broker"); err == nil {
+			producer, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": broker})
+		} else {
+			panic(err)
+		}
+	} else {
 		panic(err)
 	}
 
@@ -32,7 +35,7 @@ func Create(broker string, topic string, logLevel log.Level, logFile *os.File) K
 			switch ev := e.(type) {
 			case *kafka.Message:
 				if ev.TopicPartition.Error != nil {
-					log.WithFields(log.Fields{"topic": topic}).Error(fmt.Sprintf("Delivery failed: %v\n", ev.TopicPartition))
+					log.WithFields(log.Fields{"topic": topic}).Error(fmt.Sprintf("Delivery failed: %v\n    %s\n", ev.TopicPartition, string(ev.Value)))
 				} else {
 					log.WithFields(log.Fields{"topic": topic}).Info(fmt.Sprintf("Delivered message to %v\n", ev.TopicPartition))
 				}

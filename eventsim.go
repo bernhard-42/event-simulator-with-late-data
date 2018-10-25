@@ -2,13 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"sync"
 	"time"
 
 	"./kafkaprod"
+	"github.com/buger/jsonparser"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -45,6 +48,56 @@ type event struct {
 	Data       data
 }
 
+func init() {
+	/* Initialize random generator */
+
+	// rand.Seed(time.Now().UTC().UnixNano())
+	rand.Seed(44)
+
+	var configFile = flag.String("config", "./config.json", "config json file")
+
+	/* Initialize logging */
+	if config, err := ioutil.ReadFile(*configFile); err == nil {
+		var logFile *os.File
+		if f, err := jsonparser.GetString(config, "logging", "logFile"); err == nil {
+			switch f {
+			case "stdout":
+				logFile = os.Stdout
+			default:
+				logFile, err = os.Create(f)
+				if err != nil {
+					fmt.Printf("Cannot open file %s, logging to os.Stdout", *configFile)
+					logFile = os.Stdout
+				}
+			}
+		}
+		log.SetOutput(logFile)
+
+		if l, err := jsonparser.GetString(config, "logging", "logLevel"); err == nil {
+			switch l {
+			case "info":
+				log.SetLevel(log.InfoLevel)
+				fmt.Println("InfoLevel")
+			case "warn":
+				log.SetLevel(log.WarnLevel)
+				fmt.Println("WarnLevel")
+			case "error":
+				log.SetLevel(log.ErrorLevel)
+				fmt.Println("ErrorLevel")
+			case "debug":
+				log.SetLevel(log.DebugLevel)
+				fmt.Println("DebugLevel")
+			default:
+				log.SetLevel(log.InfoLevel)
+				fmt.Println("InfoLevel")
+			}
+		}
+	} else {
+		log.SetOutput(os.Stdout)
+		log.SetLevel(log.InfoLevel)
+	}
+}
+
 func start() event {
 	kind := "d"
 	if rand.Float32() < mobileRatio {
@@ -70,19 +123,15 @@ func start() event {
 	return event{metadata, 0, "", sessionID, ID, data{""}}
 }
 
-func (ev event) emit() event {
+func (ev *event) emit() {
 	now := time.Now()
 	ev.Timestamp = now.UnixNano() / 1000000
 	ev.Timestring = now.Format(time.RFC3339)
 	ev.ID++
 	ev.Data = data{"hello world"}
-
-	return ev
 }
 
 func (ev event) delay(buffer map[string][]event) event {
-	type eventList []event
-
 	delay := time.Duration(rand.NormFloat64()*ev.metadata.eventIntervalStddev*ev.metadata.avgEventInterval + ev.metadata.avgEventInterval)
 
 	if ev.metadata.buffered && ev.ID >= ev.metadata.bufferedStart {
@@ -125,27 +174,14 @@ func session(wg *sync.WaitGroup, wait float32) {
 	ev := start()
 	log.Debug(spew.Sprintf("Session start: %+v", ev.metadata))
 
-	if ev.metadata.buffered {
-		log.Debug("bufferd")
-	}
 	for i := 0; i < ev.metadata.numEvents; i++ {
-		ev = ev.
-			emit().
-			delay(buffer)
+		ev.emit()
+		ev.delay(buffer)
 	}
 }
 
 func main() {
-	// rand.Seed(time.Now().UTC().UnixNano())
-	rand.Seed(44)
-
-	logLevel := log.DebugLevel
-	logFile := os.Stdout
-
-	log.SetOutput(logFile)
-	log.SetLevel(logLevel)
-
-	producer = kafkaprod.Create("master1:6667", "sessions", logLevel, logFile)
+	producer = kafkaprod.Create("master1:6667", "sessions")
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
