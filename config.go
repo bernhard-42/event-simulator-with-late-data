@@ -92,22 +92,22 @@ func ParseConfig(configFile string) Config {
 
 func (c Config) String() string {
 	result := "Configration:\n"
-	result += fmt.Sprintf("workers: %d\n", c.Workers)
-	result += fmt.Sprintf("seed: %d\n", c.Seed)
-	result += "logging: \n"
-	result += fmt.Sprintf("    logLevel: %s\n", c.Logging.LogLevelStr)
-	result += fmt.Sprintf("    logFile: %s\n", c.Logging.LogFileStr)
-	result += "kafka: \n"
-	result += fmt.Sprintf("    broker: %s\n", c.Kafka.Broker)
-	result += fmt.Sprintf("    topic: %s\n", c.Kafka.Topic)
-	result += "model: \n"
-	result += fmt.Sprintf("    avgNumEvents: %d\n", c.Model.AvgNumEvents)
-	result += fmt.Sprintf("    minNumEvents: %d\n", c.Model.MinNumEvents)
-	result += fmt.Sprintf("    avgEventIntervalMs: %d\n", c.Model.AvgEventIntervalMs)
-	result += fmt.Sprintf("    eventIntervalStddev: %d\n", c.Model.EventIntervalStddev)
-	result += fmt.Sprintf("    avgNwDelayMs: %d\n", c.Model.AvgNwDelayMs)
-	result += fmt.Sprintf("    mobileRatio: %f\n", c.Model.MobileRatio)
-	result += fmt.Sprintf("    bufferdRatio: %f\n", c.Model.BufferdRatio)
-	result += fmt.Sprintf("    avgBufferedDelayMs: %d\n", c.Model.AvgBufferedDelayMs)
+	result += fmt.Sprintf("    workers: %d\n", c.Workers)
+	result += fmt.Sprintf("    seed: %d\n", c.Seed)
+	result += "    logging: \n"
+	result += fmt.Sprintf("        logLevel: %s\n", c.Logging.LogLevelStr)
+	result += fmt.Sprintf("        logFile: %s\n", c.Logging.LogFileStr)
+	result += "    kafka: \n"
+	result += fmt.Sprintf("        broker: %s\n", c.Kafka.Broker)
+	result += fmt.Sprintf("        topic: %s\n", c.Kafka.Topic)
+	result += "    model: \n"
+	result += fmt.Sprintf("        avgNumEvents: %d\n", c.Model.AvgNumEvents)
+	result += fmt.Sprintf("        minNumEvents: %d\n", c.Model.MinNumEvents)
+	result += fmt.Sprintf("        avgEventIntervalMs: %d\n", c.Model.AvgEventIntervalMs)
+	result += fmt.Sprintf("        eventIntervalStddev: %d\n", c.Model.EventIntervalStddev)
+	result += fmt.Sprintf("        avgNwDelayMs: %d\n", c.Model.AvgNwDelayMs)
+	result += fmt.Sprintf("        mobileRatio: %f\n", c.Model.MobileRatio)
+	result += fmt.Sprintf("        bufferdRatio: %f\n", c.Model.BufferdRatio)
+	result += fmt.Sprintf("        avgBufferedDelayMs: %d\n", c.Model.AvgBufferedDelayMs)
 	return result
 }
