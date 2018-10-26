@@ -67,13 +67,13 @@ func ParseConfig(configFile string) Config {
 	if jsonconf, err := ioutil.ReadFile(configFile); err == nil {
 		err := json.Unmarshal(jsonconf, &config)
 		if err == nil {
-			switch f := config.Logging.LogFileStr; f {
+			switch config.Logging.LogFileStr {
 			case "stdout":
 				config.Logging.logFile = os.Stdout
 			case "stderr":
 				config.Logging.logFile = os.Stderr
 			default:
-				config.Logging.logFile, err = os.Create(f)
+				config.Logging.logFile, err = os.Create(config.Logging.LogFileStr)
 				if err != nil {
 					fmt.Printf("Cannot open file %s, logging to os.Stdout", configFile)
 					config.Logging.logFile = os.Stdout

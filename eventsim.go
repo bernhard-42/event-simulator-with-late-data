@@ -8,16 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"./kafkaprod"
-	"github.com/davecgh/go-spew/spew"
+	"./kafkawriter"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	workers  int
-	model    Model
-	producer kafkaprod.KafkaProducer
+	workers     int
+	model       Model
+	kafkaWriter kafkawriter.KafkaWriter
 )
 
 func init() {
@@ -30,7 +29,7 @@ func init() {
 	log.SetOutput(c.Logging.logFile)
 
 	workers, model = c.Workers, c.Model
-	producer = kafkaprod.Create(c.Kafka.Broker, c.Kafka.Topic)
+	kafkaWriter = kafkawriter.Create(c.Kafka.Broker, c.Kafka.Topic)
 
 	log.Info(c)
 }
@@ -46,8 +45,17 @@ type metadata struct {
 	bufferedStart       int
 }
 
+func (m metadata) String() string {
+	return fmt.Sprintf("{avgNwDelayMs: %v, numEvents: %v, avgEventIntervalMs: %v, eventIntervalStddev: %v, buffered: %v, bufferedDelayMs: %v, bufferedNumEvents: %v, bufferedStart: %v}",
+		m.avgNwDelayMs, m.numEvents, m.avgEventIntervalMs, m.eventIntervalStddev, m.buffered, m.bufferedDelayMs, m.bufferedNumEvents, m.bufferedStart)
+}
+
 type data struct {
 	Payload string
+}
+
+func (d data) String() string {
+	return fmt.Sprintf("{Payload: %v}", d.Payload)
 }
 
 type event struct {
@@ -60,6 +68,11 @@ type event struct {
 	ID            int
 	Data          data
 	SentTimestamp int64
+}
+
+func (e event) String() string {
+	return fmt.Sprintf("{metadata: %v Kind: %v ClientID: %v Timestamp: %v Timestring: %v SessionID: %v ID: %v Data: %v SentTimestamp: %v}",
+		e.metadata, e.Kind, e.ClientID, e.Timestamp, e.Timestring, e.SessionID, e.ID, e.Data, e.SentTimestamp)
 }
 
 func sleep(millisec int) {
@@ -96,48 +109,52 @@ func start(clientID int) event {
 	return event{metadata, kind, clientID, 0, "", sessionID, ID, data{""}, 0}
 }
 
-func (ev *event) emit() {
+func (e *event) emit() {
 	var now time.Time
-	now, ev.Timestamp = timestamp()
-	ev.Timestring = now.Format(time.RFC3339)
-	ev.ID++
-	ev.Data = data{"hello world"}
+	now, e.Timestamp = timestamp()
+	e.Timestring = now.Format(time.RFC3339)
+	e.ID++
+	e.Data = data{"hello world"}
 }
 
-func (ev event) delay(buffer map[string][]event) event {
-	delay := int(rand.NormFloat64()*ev.metadata.eventIntervalStddev) + ev.metadata.avgEventIntervalMs // simulate intervals between clicks
+func (e event) delay(buffer map[string][]event) event {
+	delay := int(rand.NormFloat64()*e.metadata.eventIntervalStddev) + e.metadata.avgEventIntervalMs // simulate intervals between clicks
 
-	if ev.metadata.buffered && ev.ID >= ev.metadata.bufferedStart {
-		_, ok := buffer[ev.SessionID]
+	if e.metadata.buffered && e.ID >= e.metadata.bufferedStart {
+		_, ok := buffer[e.SessionID]
 		if !ok {
 			var eventList = []event{}
-			buffer[ev.SessionID] = eventList
+			buffer[e.SessionID] = eventList
 		}
-		buffer[ev.SessionID] = append(buffer[ev.SessionID], ev)
-		if ev.ID == ev.metadata.numEvents {
-			sleep(ev.metadata.bufferedDelayMs)
-			for _, ev2 := range buffer[ev.SessionID] {
+		buffer[e.SessionID] = append(buffer[e.SessionID], e)
+		if e.ID == e.metadata.numEvents {
+			sleep(e.metadata.bufferedDelayMs)
+			for _, ev2 := range buffer[e.SessionID] {
 				ev2.publish()
 			}
 		} else {
 			sleep(delay)
 		}
 	} else {
-		ev.publish()
+		e.publish()
 		sleep(delay)
 	}
 
-	return ev
+	return e
 }
 
-func (ev event) publish() {
-	sleep(ev.metadata.avgNwDelayMs) // Simulate network delay
-	_, ev.SentTimestamp = timestamp()
-	bytes, err := json.Marshal(ev)
+func (e event) publish() {
+	sleep(e.metadata.avgNwDelayMs) // Simulate network delay
+	_, e.SentTimestamp = timestamp()
+	bytes, err := json.Marshal(e)
 	if err != nil {
 		log.Error(err)
 	} else {
-		producer.Send(bytes)
+		if err = kafkaWriter.Send(bytes); err == nil {
+			log.Debug("Sent message: ", string(bytes))
+		} else {
+			log.Error(err)
+		}
 	}
 }
 
@@ -146,13 +163,13 @@ func session(wg *sync.WaitGroup, clientID int, wait int) {
 	defer wg.Done()
 	sleep(wait)
 	ev := start(clientID)
-	log.Debug(spew.Sprintf("Session (clientID %d) started: %+v", clientID, ev.metadata))
+	log.Info("Worker (clientID ", clientID, ") started: ", clientID, ev.metadata)
 
 	for i := 0; i < ev.metadata.numEvents; i++ {
 		ev.emit()
 		ev.delay(buffer)
 	}
-	log.Debug(spew.Sprintf("Session (clientID %d) stopped", clientID))
+	log.Debug(fmt.Sprintf("Session (clientID %d) stopped", clientID))
 }
 
 func main() {
@@ -166,7 +183,7 @@ func main() {
 		}
 		go session(&wg, i, startDelay)
 	}
-	log.Debug("started all")
+	log.Info("All workers started")
 	wg.Wait()
 	log.Info("Done")
 }

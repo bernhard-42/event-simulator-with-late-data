@@ -1,5 +1,5 @@
 {
-    "workers": 100,
+    "workers": 1,
     "seed": 44,
     "logging": {
         "logLevel": "debug",
