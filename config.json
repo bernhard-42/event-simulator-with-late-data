@@ -3,7 +3,7 @@
     "seed": 44,
     "logging": {
         "logLevel": "debug",
-        "logFile": "./log.txt"
+        "logFile": "stdout"
     },
     "kafka": {
         "topic": "sessions",

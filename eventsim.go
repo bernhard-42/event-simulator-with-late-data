@@ -15,41 +15,24 @@ import (
 )
 
 var (
-	goroutines int
-
+	workers  int
+	model    Model
 	producer kafkaprod.KafkaProducer
-
-	mobileRatio         float64
-	bufferdRatio        float64
-	avgNwDelayMs        int
-	avgNumEvents        int
-	minNumEvents        int
-	avgEventIntervalMs  int
-	eventIntervalStddev int
-	avgBufferedDelayMs  int
 )
 
 func init() {
 	var configFile = flag.String("config", "./config.json", "config json file")
 	flag.Parse()
 
-	/* Initialize logging */
-	logLevel, logFile := GetLoggingConfig(*configFile)
-	log.SetLevel(logLevel)
-	log.SetOutput(logFile)
+	c := ParseConfig(*configFile)
+	rand.Seed(c.seed)
+	log.SetLevel(c.logging.logLevel)
+	log.SetOutput(c.logging.logFile)
 
-	/* Initialize Kafka Producer */
-	broker, topic := GetKafkaConfig(*configFile)
-	producer = kafkaprod.Create(broker, topic)
+	workers, model = c.workers, c.model
+	producer = kafkaprod.Create(c.kafka.broker, c.kafka.topic)
 
-	/* Initialize global config */
-	var seed int64
-	goroutines, seed = GetGlobalConfig(*configFile)
-	rand.Seed(seed)
-
-	/* Initialize Model Parameters*/
-	mobileRatio, bufferdRatio, avgNwDelayMs, avgNumEvents, minNumEvents,
-		avgEventIntervalMs, eventIntervalStddev, avgBufferedDelayMs = GetModel(*configFile)
+	log.Info(c)
 }
 
 type metadata struct {
@@ -91,21 +74,21 @@ func timestamp() (time.Time, int64) {
 
 func start(clientID int) event {
 	kind := "d"
-	if rand.Float64() < mobileRatio {
+	if rand.Float64() < model.mobileRatio {
 		kind = "m"
 	}
-	nwDelayMs := rand.Intn(avgNwDelayMs)
-	numEvents := rand.Intn(avgNumEvents) + minNumEvents
-	buffered := (kind == "m") && (rand.Float64() < bufferdRatio)
+	nwDelayMs := rand.Intn(model.avgNwDelayMs)
+	numEvents := rand.Intn(model.avgNumEvents) + model.minNumEvents
+	buffered := (kind == "m") && (rand.Float64() < model.bufferdRatio)
 	bufferedDelayMs := 0
 	bufferedStart := 0
 	bufferedNumEvents := 0
 	if buffered {
-		bufferedDelayMs = rand.Intn(avgBufferedDelayMs)
+		bufferedDelayMs = rand.Intn(model.avgBufferedDelayMs)
 		bufferedStart = int(float64(numEvents) * rand.Float64())
 		bufferedNumEvents = numEvents - bufferedStart
 	}
-	metadata := metadata{nwDelayMs, numEvents, avgEventIntervalMs, float64(eventIntervalStddev),
+	metadata := metadata{nwDelayMs, numEvents, model.avgEventIntervalMs, float64(model.eventIntervalStddev),
 		buffered, bufferedDelayMs, bufferedNumEvents, bufferedStart}
 	sessionID := fmt.Sprint(uuid.Must(uuid.NewV4()))
 	ID := 0
@@ -175,10 +158,10 @@ func session(wg *sync.WaitGroup, clientID int, wait int) {
 func main() {
 	var wg sync.WaitGroup
 
-	for i := 0; i < goroutines; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		startDelay := 0
-		if goroutines > 1 {
+		if workers > 1 {
 			startDelay = rand.Intn(30000)
 		}
 		go session(&wg, i, startDelay)
