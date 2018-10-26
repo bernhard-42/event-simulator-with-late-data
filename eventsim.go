@@ -25,12 +25,12 @@ func init() {
 	flag.Parse()
 
 	c := ParseConfig(*configFile)
-	rand.Seed(c.seed)
-	log.SetLevel(c.logging.logLevel)
-	log.SetOutput(c.logging.logFile)
+	rand.Seed(c.Seed)
+	log.SetLevel(c.Logging.logLevel)
+	log.SetOutput(c.Logging.logFile)
 
-	workers, model = c.workers, c.model
-	producer = kafkaprod.Create(c.kafka.broker, c.kafka.topic)
+	workers, model = c.Workers, c.Model
+	producer = kafkaprod.Create(c.Kafka.Broker, c.Kafka.Topic)
 
 	log.Info(c)
 }
@@ -74,21 +74,21 @@ func timestamp() (time.Time, int64) {
 
 func start(clientID int) event {
 	kind := "d"
-	if rand.Float64() < model.mobileRatio {
+	if rand.Float64() < model.MobileRatio {
 		kind = "m"
 	}
-	nwDelayMs := rand.Intn(model.avgNwDelayMs)
-	numEvents := rand.Intn(model.avgNumEvents) + model.minNumEvents
-	buffered := (kind == "m") && (rand.Float64() < model.bufferdRatio)
+	nwDelayMs := rand.Intn(model.AvgNwDelayMs)
+	numEvents := rand.Intn(model.AvgNumEvents) + model.MinNumEvents
+	buffered := (kind == "m") && (rand.Float64() < model.BufferdRatio)
 	bufferedDelayMs := 0
 	bufferedStart := 0
 	bufferedNumEvents := 0
 	if buffered {
-		bufferedDelayMs = rand.Intn(model.avgBufferedDelayMs)
+		bufferedDelayMs = rand.Intn(model.AvgBufferedDelayMs)
 		bufferedStart = int(float64(numEvents) * rand.Float64())
 		bufferedNumEvents = numEvents - bufferedStart
 	}
-	metadata := metadata{nwDelayMs, numEvents, model.avgEventIntervalMs, float64(model.eventIntervalStddev),
+	metadata := metadata{nwDelayMs, numEvents, model.AvgEventIntervalMs, float64(model.EventIntervalStddev),
 		buffered, bufferedDelayMs, bufferedNumEvents, bufferedStart}
 	sessionID := fmt.Sprint(uuid.Must(uuid.NewV4()))
 	ID := 0

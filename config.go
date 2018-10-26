@@ -1,159 +1,113 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
 
-	"github.com/buger/jsonparser"
 	log "github.com/sirupsen/logrus"
 )
 
-type logging struct {
-	logLevel log.Level
-	logFile  *os.File
+// Logging holds the logging configuration
+type Logging struct {
+	LogLevelStr string `json:"logLevel"`
+	LogFileStr  string `json:"logFile"`
+	logLevel    log.Level
+	logFile     *os.File
 }
 
-type kafka struct {
-	topic  string
-	broker string
+// Kafka holds the kafka configuration broker and topic
+type Kafka struct {
+	Topic  string `json:"topic"`
+	Broker string `json:"broker"`
 }
 
-// Model holds the event simulator parameters
+// Model holds the parameters for the simulation
 type Model struct {
-	avgNumEvents        int
-	minNumEvents        int
-	avgEventIntervalMs  int
-	eventIntervalStddev int
-	avgNwDelayMs        int
-	mobileRatio         float64
-	bufferdRatio        float64
-	avgBufferedDelayMs  int
+	AvgNumEvents        int     `json:"avgNumEvents"`
+	MinNumEvents        int     `json:"minNumEvents"`
+	AvgEventIntervalMs  int     `json:"avgEventIntervalMs"`
+	EventIntervalStddev int     `json:"eventIntervalStddev"`
+	AvgNwDelayMs        int     `json:"avgNwDelayMs"`
+	MobileRatio         float64 `json:"mobileRatio"`
+	BufferdRatio        float64 `json:"bufferdRatio"`
+	AvgBufferedDelayMs  int     `json:"avgBufferedDelayMs"`
 }
 
 // Config holds defaults and custom configurations
 type Config struct {
-	workers int
-	seed    int64
-	logging logging
-	kafka   kafka
-	model   Model
+	Workers int     `json:"workers"`
+	Seed    int64   `json:"seed"`
+	Logging Logging `json:"logging"`
+	Kafka   Kafka   `json:"kafka"`
+	Model   Model   `json:"model"`
 }
 
 // ParseConfig converts json config file to a struct
 func ParseConfig(configFile string) Config {
-	// defaults
+	// Set defaults
 	config := Config{
-		1,                           // workers
-		time.Now().UTC().UnixNano(), // seed
-		logging{
-			log.InfoLevel, // logLevel
-			os.Stdout,     // logFile
-		},
-		kafka{
-			"test_sessions",  // topic
-			"localhost:9092", // broker
-		},
+		1,                           /* workers */
+		time.Now().UTC().UnixNano(), /* seed */
+		Logging{"info", "stdout", log.InfoLevel, os.Stdout},
+		Kafka{"test_sessions" /* topic */, "localhost:9092" /* broker */},
 		Model{
-			50,    // avgNumEvents
-			5,     // minNumEvents
-			5000,  // avgEventIntervalMs
-			5000,  // eventIntervalStddev
-			10,    // avgNwDelayMs
-			0.75,  // mobileRatio
-			0.1,   // bufferdRatio
-			60000, // avgBufferedDelayMs
+			50,    /* AvgNumEvents */
+			5,     /* MinNumEvents */
+			5000,  /* AvgEventIntervalMs */
+			5000,  /* EventIntervalStddev */
+			10,    /* AvgNwDelayMs */
+			0.75,  /* MobileRatio */
+			0.1,   /* BufferdRatio */
+			60000, /* AvgBufferedDelayMs */
 		},
 	}
-
 	if jsonconf, err := ioutil.ReadFile(configFile); err == nil {
-		// global config
-		if g, err := jsonparser.GetInt(jsonconf, "workers"); err == nil {
-			config.workers = int(g)
-		}
-		if s, err := jsonparser.GetInt(jsonconf, "seed"); err == nil {
-			config.seed = s
-		}
-
-		// logging config
-		if f, err := jsonparser.GetString(jsonconf, "logging", "logFile"); err == nil {
-			switch f {
+		err := json.Unmarshal(jsonconf, &config)
+		if err == nil {
+			switch f := config.Logging.LogFileStr; f {
 			case "stdout":
-				config.logging.logFile = os.Stdout
+				config.Logging.logFile = os.Stdout
 			case "stderr":
-				config.logging.logFile = os.Stderr
+				config.Logging.logFile = os.Stderr
 			default:
-				config.logging.logFile, err = os.Create(f)
+				config.Logging.logFile, err = os.Create(f)
 				if err != nil {
 					fmt.Printf("Cannot open file %s, logging to os.Stdout", configFile)
-					config.logging.logFile = os.Stdout
+					config.Logging.logFile = os.Stdout
 				}
 			}
-		}
-		if l, err := jsonparser.GetString(jsonconf, "logging", "logLevel"); err == nil {
-			if config.logging.logLevel, err = log.ParseLevel(l); err != nil {
+			if config.Logging.logLevel, err = log.ParseLevel(config.Logging.LogLevelStr); err != nil {
 				fmt.Println(err)
-				config.logging.logLevel = log.InfoLevel
+				config.Logging.logLevel = log.InfoLevel
 			}
-		}
-
-		// kafka config
-		if b, err := jsonparser.GetString(jsonconf, "kafka", "broker"); err == nil {
-			config.kafka.broker = b
-		}
-		if t, err := jsonparser.GetString(jsonconf, "kafka", "topic"); err == nil {
-			config.kafka.topic = t
-		}
-
-		// model config
-		if m, err := jsonparser.GetFloat(jsonconf, "model", "mobileRatio"); err == nil {
-			config.model.mobileRatio = m
-		}
-		if m, err := jsonparser.GetFloat(jsonconf, "model", "bufferdRatio"); err == nil {
-			config.model.bufferdRatio = m
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "avgNwDelayMs"); err == nil {
-			config.model.avgNwDelayMs = int(m)
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "avgNumEvents"); err == nil {
-			config.model.avgNumEvents = int(m)
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "minNumEvents"); err == nil {
-			config.model.minNumEvents = int(m)
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "avgEventIntervalMs"); err == nil {
-			config.model.avgEventIntervalMs = int(m)
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "eventIntervalStddev"); err == nil {
-			config.model.eventIntervalStddev = int(m)
-		}
-		if m, err := jsonparser.GetInt(jsonconf, "model", "avgBufferedDelayMs"); err == nil {
-			config.model.avgBufferedDelayMs = int(m)
+		} else {
+			panic(err)
 		}
 	}
-
 	return config
 }
 
 func (c Config) String() string {
-	result := ""
-	result += fmt.Sprintf("workers: %d\n", c.workers)
-	result += fmt.Sprintf("seed: %d\n", c.seed)
+	result := "Configration:\n"
+	result += fmt.Sprintf("workers: %d\n", c.Workers)
+	result += fmt.Sprintf("seed: %d\n", c.Seed)
 	result += "logging: \n"
-	result += fmt.Sprintf("    logLevel: %s\n", c.logging.logLevel)
-	result += fmt.Sprintf("    logFile: %v\n", c.logging.logFile)
+	result += fmt.Sprintf("    logLevel: %s\n", c.Logging.LogLevelStr)
+	result += fmt.Sprintf("    logFile: %s\n", c.Logging.LogFileStr)
 	result += "kafka: \n"
-	result += fmt.Sprintf("    broker: %s\n", c.kafka.broker)
-	result += fmt.Sprintf("    topic: %s\n", c.kafka.topic)
+	result += fmt.Sprintf("    broker: %s\n", c.Kafka.Broker)
+	result += fmt.Sprintf("    topic: %s\n", c.Kafka.Topic)
 	result += "model: \n"
-	result += fmt.Sprintf("    avgNumEvents: %d\n", c.model.avgNumEvents)
-	result += fmt.Sprintf("    minNumEvents: %d\n", c.model.minNumEvents)
-	result += fmt.Sprintf("    avgEventIntervalMs: %d\n", c.model.avgEventIntervalMs)
-	result += fmt.Sprintf("    eventIntervalStddev: %d\n", c.model.eventIntervalStddev)
-	result += fmt.Sprintf("    avgNwDelayMs: %d\n", c.model.avgNwDelayMs)
-	result += fmt.Sprintf("    mobileRatio: %f\n", c.model.mobileRatio)
-	result += fmt.Sprintf("    bufferdRatio: %f\n", c.model.bufferdRatio)
-	result += fmt.Sprintf("    avgBufferedDelayMs: %d\n", c.model.avgBufferedDelayMs)
+	result += fmt.Sprintf("    avgNumEvents: %d\n", c.Model.AvgNumEvents)
+	result += fmt.Sprintf("    minNumEvents: %d\n", c.Model.MinNumEvents)
+	result += fmt.Sprintf("    avgEventIntervalMs: %d\n", c.Model.AvgEventIntervalMs)
+	result += fmt.Sprintf("    eventIntervalStddev: %d\n", c.Model.EventIntervalStddev)
+	result += fmt.Sprintf("    avgNwDelayMs: %d\n", c.Model.AvgNwDelayMs)
+	result += fmt.Sprintf("    mobileRatio: %f\n", c.Model.MobileRatio)
+	result += fmt.Sprintf("    bufferdRatio: %f\n", c.Model.BufferdRatio)
+	result += fmt.Sprintf("    avgBufferedDelayMs: %d\n", c.Model.AvgBufferedDelayMs)
 	return result
 }

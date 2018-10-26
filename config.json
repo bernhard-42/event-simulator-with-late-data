@@ -1,5 +1,5 @@
 {
-    "goroutines": 100,
+    "workers": 100,
     "seed": 44,
     "logging": {
         "logLevel": "debug",
