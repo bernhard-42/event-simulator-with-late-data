@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
@@ -17,8 +18,9 @@ type KafkaWriter struct {
 // Create is the factory function to create KafkaWriter instance
 func Create(broker string, topic string) KafkaWriter {
 	w := kafka.NewWriter(kafka.WriterConfig{
-		Brokers: []string{broker},
-		Topic:   topic,
+		Brokers:      []string{broker},
+		Topic:        topic,
+		BatchTimeout: 1 * time.Millisecond,
 	})
 	return KafkaWriter{w}
 }
