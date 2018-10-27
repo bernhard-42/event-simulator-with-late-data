@@ -1,22 +1,23 @@
 {
-    "workers": 1,
+    "workers": 10,
+    "sessions": 10,
+    "sessionDelayMs": 10000,
     "seed": 44,
     "logging": {
         "logLevel": "debug",
-        "logFile": "stdout"
+        "logFile": "./log.txt"
     },
     "kafka": {
         "topic": "sessions",
         "broker": "master1:6667"
     },
     "model": {
-        "avgNumEvents": 50,
+        "avgNumEvents": 40,
         "minNumEvents": 5,
         "mobileRatio": 0.75,
         "bufferdRatio": 0.2,
         "avgNwDelayMs": 10,
         "avgEventIntervalMs": 5000,
-        "eventIntervalStddev": 5000,
-        "avgBufferedDelayMs": 60000
+        "eventIntervalStddev": 5000
     }
 }

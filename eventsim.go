@@ -14,9 +14,11 @@ import (
 )
 
 var (
-	workers     int
-	model       Model
-	kafkaWriter kafkawriter.KafkaWriter
+	workers        int
+	sessions       int
+	sessionDelayMs int
+	model          Model
+	kafkaWriter    kafkawriter.KafkaWriter
 )
 
 func init() {
@@ -28,7 +30,7 @@ func init() {
 	log.SetLevel(c.Logging.logLevel)
 	log.SetOutput(c.Logging.logFile)
 
-	workers, model = c.Workers, c.Model
+	workers, model, sessions, sessionDelayMs = c.Workers, c.Model, c.Sessions, c.SessionDelayMs
 	kafkaWriter = kafkawriter.Create(c.Kafka.Broker, c.Kafka.Topic)
 
 	log.Info(c)
@@ -40,22 +42,22 @@ type metadata struct {
 	avgEventIntervalMs  int
 	eventIntervalStddev float64
 	buffered            bool
-	bufferedDelayMs     int
 	bufferedNumEvents   int
 	bufferedStart       int
 }
 
 func (m metadata) String() string {
-	return fmt.Sprintf("{avgNwDelayMs: %v, numEvents: %v, avgEventIntervalMs: %v, eventIntervalStddev: %v, buffered: %v, bufferedDelayMs: %v, bufferedNumEvents: %v, bufferedStart: %v}",
-		m.avgNwDelayMs, m.numEvents, m.avgEventIntervalMs, m.eventIntervalStddev, m.buffered, m.bufferedDelayMs, m.bufferedNumEvents, m.bufferedStart)
+	return fmt.Sprintf("{avgNwDelayMs: %v, numEvents: %v, avgEventIntervalMs: %v, eventIntervalStddev: %v, buffered: %v, bufferedNumEvents: %v, bufferedStart: %v}",
+		m.avgNwDelayMs, m.numEvents, m.avgEventIntervalMs, m.eventIntervalStddev, m.buffered, m.bufferedNumEvents, m.bufferedStart)
 }
 
 type data struct {
-	Payload string
+	Values int
+	Errors int
 }
 
 func (d data) String() string {
-	return fmt.Sprintf("{Payload: %v}", d.Payload)
+	return fmt.Sprintf("{Values: %d, Errors: %d}", d.Values, d.Errors)
 }
 
 type event struct {
@@ -90,23 +92,21 @@ func start(clientID int) event {
 	if rand.Float64() < model.MobileRatio {
 		kind = "m"
 	}
-	nwDelayMs := rand.Intn(model.AvgNwDelayMs)
+	nwDelayMs := 1 + rand.Intn(model.AvgNwDelayMs)
 	numEvents := rand.Intn(model.AvgNumEvents) + model.MinNumEvents
 	buffered := (kind == "m") && (rand.Float64() < model.BufferdRatio)
-	bufferedDelayMs := 0
 	bufferedStart := 0
 	bufferedNumEvents := 0
 	if buffered {
-		bufferedDelayMs = rand.Intn(model.AvgBufferedDelayMs)
 		bufferedStart = int(float64(numEvents) * rand.Float64())
-		bufferedNumEvents = numEvents - bufferedStart
+		bufferedNumEvents = rand.Intn(numEvents - bufferedStart)
 	}
 	metadata := metadata{nwDelayMs, numEvents, model.AvgEventIntervalMs, float64(model.EventIntervalStddev),
-		buffered, bufferedDelayMs, bufferedNumEvents, bufferedStart}
+		buffered, bufferedNumEvents, bufferedStart}
 	sessionID := fmt.Sprint(uuid.Must(uuid.NewV4()))
 	ID := 0
 
-	return event{metadata, kind, clientID, 0, "", sessionID, ID, data{""}, 0}
+	return event{metadata, kind, clientID, 0, "", sessionID, ID, data{-1, -1}, 0}
 }
 
 func (e *event) emit() {
@@ -114,38 +114,51 @@ func (e *event) emit() {
 	now, e.Timestamp = timestamp()
 	e.Timestring = now.Format(time.RFC3339)
 	e.ID++
-	e.Data = data{"hello world"}
+	value := 10 + rand.Intn(90)
+	errors := 0
+	if rand.Float64() < 0.1 {
+		errors = 1 + rand.Intn(value/10)
+	}
+
+	e.Data = data{value, errors}
 }
 
 func (e event) delay(buffer map[string][]event) event {
 	delay := int(rand.NormFloat64()*e.metadata.eventIntervalStddev) + e.metadata.avgEventIntervalMs // simulate intervals between clicks
 
-	if e.metadata.buffered && e.ID >= e.metadata.bufferedStart {
-		_, ok := buffer[e.SessionID]
-		if !ok {
-			var eventList = []event{}
-			buffer[e.SessionID] = eventList
-		}
-		buffer[e.SessionID] = append(buffer[e.SessionID], e)
-		if e.ID == e.metadata.numEvents {
-			sleep(e.metadata.bufferedDelayMs)
-			for _, ev2 := range buffer[e.SessionID] {
-				ev2.publish()
+	bufStart := e.metadata.bufferedStart
+	bufEnd := bufStart + e.metadata.bufferedNumEvents
+	if e.metadata.buffered && e.ID >= bufStart && e.ID <= bufEnd {
+		if e.ID < bufEnd {
+			// fill buffer
+			_, ok := buffer[e.SessionID]
+			if !ok {
+				var eventList = []event{}
+				buffer[e.SessionID] = eventList
 			}
-		} else {
-			sleep(delay)
+			buffer[e.SessionID] = append(buffer[e.SessionID], e)
+		} else if e.ID == bufEnd {
+			// drain buffer
+			for _, e2 := range buffer[e.SessionID] {
+				// no further network delay
+				e2.publish()
+			}
 		}
 	} else {
+		// Simulate network delay
+		sleep(e.metadata.avgNwDelayMs)
+
 		e.publish()
-		sleep(delay)
 	}
 
+	sleep(delay)
 	return e
 }
 
 func (e event) publish() {
-	sleep(e.metadata.avgNwDelayMs) // Simulate network delay
+	// set sent timestamp just for batch stream analysis
 	_, e.SentTimestamp = timestamp()
+	// send to Kafka
 	bytes, err := json.Marshal(e)
 	if err != nil {
 		log.Error(err)
@@ -158,32 +171,57 @@ func (e event) publish() {
 	}
 }
 
-func session(wg *sync.WaitGroup, clientID int, wait int) {
+type job struct {
+	ID    int
+	delay int
+}
+
+func session(clientID int, delay int) {
 	var buffer = make(map[string][]event)
-	defer wg.Done()
-	sleep(wait)
+	sleep(delay)
 	ev := start(clientID)
-	log.Info("Worker (clientID ", clientID, ") started: ", clientID, ev.metadata)
+	log.Info("Job ", clientID, " started: ", clientID, ev.metadata)
 
 	for i := 0; i < ev.metadata.numEvents; i++ {
 		ev.emit()
 		ev.delay(buffer)
 	}
-	log.Debug(fmt.Sprintf("Session (clientID %d) stopped", clientID))
+	log.Debug("Job ", clientID, " finished")
+}
+
+func worker(jobs chan job, workerID int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		job, ok := <-jobs
+		if ok {
+			log.Debug("Worker ", workerID, " starting job ", job.ID, " with delay ", job.delay)
+			session(job.ID, job.delay)
+			log.Debug("Worker ", workerID, " finished job ", job.ID)
+		} else {
+			log.Debug("Worker ", workerID, " done")
+			break
+		}
+	}
 }
 
 func main() {
 	var wg sync.WaitGroup
+	jobs := make(chan job)
 
+	// Create a pool of workers
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		startDelay := 0
-		if workers > 1 {
-			startDelay = rand.Intn(30000)
-		}
-		go session(&wg, i, startDelay)
+		go worker(jobs, i, &wg)
 	}
-	log.Info("All workers started")
+
+	// Fill the job list for number of sessions
+	for i := 0; i < sessions; i++ {
+		jobs <- job{i, rand.Intn(sessionDelayMs)}
+	}
+
+	close(jobs)
+
 	wg.Wait()
+	// kafkaWriter.Close()
 	log.Info("Done")
 }

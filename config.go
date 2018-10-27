@@ -33,16 +33,17 @@ type Model struct {
 	AvgNwDelayMs        int     `json:"avgNwDelayMs"`
 	MobileRatio         float64 `json:"mobileRatio"`
 	BufferdRatio        float64 `json:"bufferdRatio"`
-	AvgBufferedDelayMs  int     `json:"avgBufferedDelayMs"`
 }
 
 // Config holds defaults and custom configurations
 type Config struct {
-	Workers int     `json:"workers"`
-	Seed    int64   `json:"seed"`
-	Logging Logging `json:"logging"`
-	Kafka   Kafka   `json:"kafka"`
-	Model   Model   `json:"model"`
+	Workers        int     `json:"workers"`
+	Sessions       int     `json:"sessions"`
+	SessionDelayMs int     `json:"sessionDelayMs"`
+	Seed           int64   `json:"seed"`
+	Logging        Logging `json:"logging"`
+	Kafka          Kafka   `json:"kafka"`
+	Model          Model   `json:"model"`
 }
 
 // ParseConfig converts json config file to a struct
@@ -50,18 +51,22 @@ func ParseConfig(configFile string) Config {
 	// Set defaults
 	config := Config{
 		1,                           /* workers */
+		10,                          /* sesions */
+		10000,                       /* sessionDelayMs */
 		time.Now().UTC().UnixNano(), /* seed */
 		Logging{"info", "stdout", log.InfoLevel, os.Stdout},
-		Kafka{"test_sessions" /* topic */, "localhost:9092" /* broker */},
+		Kafka{
+			"test_sessions",  /* topic */
+			"localhost:9092", /* broker */
+		},
 		Model{
-			50,    /* AvgNumEvents */
-			5,     /* MinNumEvents */
-			5000,  /* AvgEventIntervalMs */
-			5000,  /* EventIntervalStddev */
-			10,    /* AvgNwDelayMs */
-			0.75,  /* MobileRatio */
-			0.1,   /* BufferdRatio */
-			60000, /* AvgBufferedDelayMs */
+			50,   /* AvgNumEvents */
+			5,    /* MinNumEvents */
+			5000, /* AvgEventIntervalMs */
+			5000, /* EventIntervalStddev */
+			10,   /* AvgNwDelayMs */
+			0.75, /* MobileRatio */
+			0.1,  /* BufferdRatio */
 		},
 	}
 	if jsonconf, err := ioutil.ReadFile(configFile); err == nil {
@@ -93,6 +98,8 @@ func ParseConfig(configFile string) Config {
 func (c Config) String() string {
 	result := "Configration:\n"
 	result += fmt.Sprintf("    workers: %d\n", c.Workers)
+	result += fmt.Sprintf("    sessions: %d\n", c.Sessions)
+	result += fmt.Sprintf("    SessionDelayMs: %d\n", c.SessionDelayMs)
 	result += fmt.Sprintf("    seed: %d\n", c.Seed)
 	result += "    logging: \n"
 	result += fmt.Sprintf("        logLevel: %s\n", c.Logging.LogLevelStr)
@@ -108,6 +115,5 @@ func (c Config) String() string {
 	result += fmt.Sprintf("        avgNwDelayMs: %d\n", c.Model.AvgNwDelayMs)
 	result += fmt.Sprintf("        mobileRatio: %f\n", c.Model.MobileRatio)
 	result += fmt.Sprintf("        bufferdRatio: %f\n", c.Model.BufferdRatio)
-	result += fmt.Sprintf("        avgBufferedDelayMs: %d\n", c.Model.AvgBufferedDelayMs)
 	return result
 }
