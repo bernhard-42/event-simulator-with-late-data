@@ -5,10 +5,10 @@
     "seed": 44,
     "logging": {
         "logLevel": "debug",
-        "logFile": "./log.txt"
+        "logFile": "./log-10.txt"
     },
     "kafka": {
-        "topic": "sessions",
+        "topic": "sessions-10",
         "broker": "master1:6667"
     },
     "model": {
@@ -21,3 +21,4 @@
         "eventIntervalStddev": 5000
     }
 }
+ 
