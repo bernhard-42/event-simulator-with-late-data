@@ -13,6 +13,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+/*
+	Initialization of global variables
+*/
+
 var (
 	workers        int
 	sessions       int
@@ -36,6 +40,10 @@ func init() {
 	log.Info(c)
 }
 
+/*
+	Type definitions
+*/
+
 type metadata struct {
 	avgNwDelayMs        int
 	numEvents           int
@@ -46,47 +54,72 @@ type metadata struct {
 	bufferedStart       int
 }
 
-func (m metadata) String() string {
-	return fmt.Sprintf("{avgNwDelayMs: %v, numEvents: %v, avgEventIntervalMs: %v, eventIntervalStddev: %v, buffered: %v, bufferedNumEvents: %v, bufferedStart: %v}",
-		m.avgNwDelayMs, m.numEvents, m.avgEventIntervalMs, m.eventIntervalStddev, m.buffered, m.bufferedNumEvents, m.bufferedStart)
-}
-
 type data struct {
 	Values int
 	Errors int
+}
+
+type event struct {
+	metadata  metadata
+	Kind      string
+	ClientID  int
+	Timestamp int64
+	SessionID string
+	EventID   int
+	Data      data
+}
+
+/*
+	Type Stringers
+*/
+
+func (m metadata) String() string {
+	return fmt.Sprintf("{avgNwDelayMs: %v, numEvents: %v, avgEventIntervalMs: %v, eventIntervalStddev: %v, buffered: %v, bufferedNumEvents: %v, bufferedStart: %v}",
+		m.avgNwDelayMs, m.numEvents, m.avgEventIntervalMs, m.eventIntervalStddev, m.buffered, m.bufferedNumEvents, m.bufferedStart)
 }
 
 func (d data) String() string {
 	return fmt.Sprintf("{Values: %d, Errors: %d}", d.Values, d.Errors)
 }
 
-type event struct {
-	metadata      metadata
-	Kind          string
-	ClientID      int
-	Timestamp     int64
-	Timestring    string
-	SessionID     string
-	ID            int
-	Data          data
-	SentTimestamp int64
+func (e event) String() string {
+	return fmt.Sprintf("{metadata: %v Kind: %v ClientID: %v Timestamp: %v SessionID: %v ID: %v Data: %v}",
+		e.metadata, e.Kind, e.ClientID, e.Timestamp, e.SessionID, e.EventID, e.Data)
 }
 
-func (e event) String() string {
-	return fmt.Sprintf("{metadata: %v Kind: %v ClientID: %v Timestamp: %v Timestring: %v SessionID: %v ID: %v Data: %v SentTimestamp: %v}",
-		e.metadata, e.Kind, e.ClientID, e.Timestamp, e.Timestring, e.SessionID, e.ID, e.Data, e.SentTimestamp)
-}
+/*
+	Helpers
+*/
 
 func sleep(millisec int) {
 	delay := time.Duration(millisec) * time.Millisecond
 	time.Sleep(delay)
 }
 
-func timestamp() (time.Time, int64) {
+func timestamp() int64 {
 	now := time.Now()
-	return now, now.UnixNano() / 1000000
+	return now.UnixNano() / 1000000
 }
 
+/*
+	Simulator pipeline: session = start -> emit -> delay -> publish
+*/
+
+func session(clientID int, delay int) {
+	var buffer = make(map[string][]event)
+	sleep(delay)
+
+	ev := start(clientID)
+	log.Info("Job ", clientID, " started: ", clientID, ev.metadata)
+
+	for i := 0; i < ev.metadata.numEvents; i++ {
+		ev.emit()
+		ev.delay(buffer)
+	}
+	log.Debug("Job ", clientID, " finished")
+}
+
+// start the pipeline and create an event with defaults
 func start(clientID int) event {
 	kind := "d"
 	if rand.Float64() < model.MobileRatio {
@@ -106,14 +139,13 @@ func start(clientID int) event {
 	sessionID := fmt.Sprint(uuid.Must(uuid.NewV4()))
 	ID := 0
 
-	return event{metadata, kind, clientID, 0, "", sessionID, ID, data{-1, -1}, 0}
+	return event{metadata, kind, clientID, 0, sessionID, ID, data{-1, -1}}
 }
 
+// emit event with event specific values
 func (e *event) emit() {
-	var now time.Time
-	now, e.Timestamp = timestamp()
-	e.Timestring = now.Format(time.RFC3339)
-	e.ID++
+	e.Timestamp = timestamp()
+	e.EventID++
 	value := 10 + rand.Intn(90)
 	errors := 0
 	if rand.Float64() < 0.1 {
@@ -123,13 +155,14 @@ func (e *event) emit() {
 	e.Data = data{value, errors}
 }
 
+// add network delays and notwork outage buffering
 func (e event) delay(buffer map[string][]event) event {
 	delay := int(rand.NormFloat64()*e.metadata.eventIntervalStddev) + e.metadata.avgEventIntervalMs // simulate intervals between clicks
 
 	bufStart := e.metadata.bufferedStart
 	bufEnd := bufStart + e.metadata.bufferedNumEvents
-	if e.metadata.buffered && e.ID >= bufStart && e.ID <= bufEnd {
-		if e.ID < bufEnd {
+	if e.metadata.buffered && e.EventID >= bufStart && e.EventID <= bufEnd {
+		if e.EventID < bufEnd {
 			// fill buffer
 			_, ok := buffer[e.SessionID]
 			if !ok {
@@ -137,7 +170,7 @@ func (e event) delay(buffer map[string][]event) event {
 				buffer[e.SessionID] = eventList
 			}
 			buffer[e.SessionID] = append(buffer[e.SessionID], e)
-		} else if e.ID == bufEnd {
+		} else if e.EventID == bufEnd {
 			// drain buffer
 			for _, e2 := range buffer[e.SessionID] {
 				// no further network delay
@@ -155,9 +188,8 @@ func (e event) delay(buffer map[string][]event) event {
 	return e
 }
 
+// publish to kafka
 func (e event) publish() {
-	// set sent timestamp just for batch stream analysis
-	_, e.SentTimestamp = timestamp()
 	// send to Kafka
 	bytes, err := json.Marshal(e)
 	if err != nil {
@@ -171,22 +203,13 @@ func (e event) publish() {
 	}
 }
 
+/*
+	Worker pool
+*/
+
 type job struct {
 	ID    int
 	delay int
-}
-
-func session(clientID int, delay int) {
-	var buffer = make(map[string][]event)
-	sleep(delay)
-	ev := start(clientID)
-	log.Info("Job ", clientID, " started: ", clientID, ev.metadata)
-
-	for i := 0; i < ev.metadata.numEvents; i++ {
-		ev.emit()
-		ev.delay(buffer)
-	}
-	log.Debug("Job ", clientID, " finished")
 }
 
 func worker(jobs chan job, workerID int, wg *sync.WaitGroup) {
@@ -203,6 +226,10 @@ func worker(jobs chan job, workerID int, wg *sync.WaitGroup) {
 		}
 	}
 }
+
+/*
+	Main
+*/
 
 func main() {
 	var wg sync.WaitGroup
