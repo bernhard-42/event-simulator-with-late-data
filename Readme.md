@@ -27,21 +27,15 @@ The result record looks like:
         "Kind": "m",
         "ClientID": 2,
         "Timestamp": 1540636807739,
-        "Timestring": "2018-10-27T12:40:07+02:00",
         "SessionID": "4517c08a-3b92-426f-9d9d-704a2ba22449",
-        "ID": 1,
+        "EventID": 1,
         "Data": {
             "Values": 17,
             "Errors": 0
-        },
-        "SentTimestamp": 1540636807746
+        }
     }
 
-
-The payload is simply `{"Values":<int>, "Errors": <int>}`, e.g. like a monitoring event that counts measurements and returns this count in `Values` and how many errors were detected in `Errors`. From a streaming persepctive aggregations like "average errors per session", "sum of values per session", ... can be calculated. Combined with windowing and watermarks, the effect of lata data can be analysed and mitigated.
-
-The simulator writes a `SentTimestamp`, i.e. the time when the event is finally pushed to Kafka. This can be seen as the "Received Timestamp" from a later streaming client perspective and can significantly differ from the event timestamp in case of buffering. This `SentTimestamp` is only included for batch analysis / visualisation of late data. Since the simulator works in real time, this timestamp can be ignored during a streaming analysis.
-
+The payload is simply `{"Values":<int>, "Errors": <int>}`, e.g. like a monitoring event that counts measurements and returns this count in `Values` and how many errors were detected in `Errors`. From a streaming persepctive aggregations like "average errors per session", "sum of values per session", ... can be calculated. Combined with windowing and watermarks, the effect of late data can be analysed and mitigated.
 
 A simple example for 10 workers creating 10 sessions, i.e. one session per worker looks like (x-axis shows event/received timestamp in seconds, y-axis: shows session number, dots in one session/row are the events per session):
 
