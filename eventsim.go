@@ -22,6 +22,7 @@ var (
 	sessions       int
 	sessionDelayMs int
 	model          Model
+	randPool       []RandPool
 	kafkaWriter    kafkawriter.KafkaWriter
 )
 
@@ -30,11 +31,19 @@ func init() {
 	flag.Parse()
 
 	c := ParseConfig(*configFile)
-	rand.Seed(c.Seed)
+
 	log.SetLevel(c.Logging.logLevel)
 	log.SetOutput(c.Logging.logFile)
 
 	workers, model, sessions, sessionDelayMs = c.Workers, c.Model, c.Sessions, c.SessionDelayMs
+
+	rand.Seed(c.Seed)
+
+	randPool = []RandPool{}
+	for i := 0; i < sessions; i++ {
+		rp := CreateRandPool(sessions*model.MaxNumEvents*10, sessions*model.MaxNumEvents)
+		randPool = append(randPool, *rp)
+	}
 	kafkaWriter = kafkawriter.Create(c.Kafka.Broker, c.Kafka.Topic)
 
 	log.Info(c)
@@ -105,34 +114,36 @@ func timestamp() int64 {
 	Simulator pipeline: session = start -> emit -> delay -> publish
 */
 
-func session(clientID int, delay int) {
-	var buffer = make(map[string][]event)
+func session(clientID int) {
+	delay := randPool[clientID].Intn(sessionDelayMs)
 	sleep(delay)
 
+	var buffer = make(map[string][]event)
+
 	ev := start(clientID)
-	log.Info("Job ", clientID, " started: ", clientID, ev.metadata)
+	log.Info("Session ", clientID, " started (delay:", delay, "): ", clientID, ev.metadata)
 
 	for i := 0; i < ev.metadata.numEvents; i++ {
-		ev.emit()
-		ev.delay(buffer)
+		ev.emit(clientID)
+		ev.delay(clientID, buffer)
 	}
-	log.Debug("Job ", clientID, " finished")
+	log.Info("Session ", clientID, " finished")
 }
 
 // start the pipeline and create an event with defaults
 func start(clientID int) event {
 	kind := "d"
-	if rand.Float64() < model.MobileRatio {
+	if randPool[clientID].Float64() < model.MobileRatio {
 		kind = "m"
 	}
-	nwDelayMs := 1 + rand.Intn(model.AvgNwDelayMs)
-	numEvents := rand.Intn(model.AvgNumEvents) + model.MinNumEvents
-	buffered := (kind == "m") && (rand.Float64() < model.BufferdRatio)
+	nwDelayMs := 1 + randPool[clientID].Intn(model.AvgNwDelayMs)
+	numEvents := randPool[clientID].Intn(model.MaxNumEvents) + model.MinNumEvents
+	buffered := (kind == "m") && (randPool[clientID].Float64() < model.BufferdRatio)
 	bufferedStart := 0
 	bufferedNumEvents := 0
 	if buffered {
-		bufferedStart = int(float64(numEvents) * rand.Float64())
-		bufferedNumEvents = rand.Intn(numEvents - bufferedStart)
+		bufferedStart = int(float64(numEvents) * randPool[clientID].Float64())
+		bufferedNumEvents = randPool[clientID].Intn(numEvents - bufferedStart)
 	}
 	metadata := metadata{nwDelayMs, numEvents, model.AvgEventIntervalMs, float64(model.EventIntervalStddev),
 		buffered, bufferedNumEvents, bufferedStart}
@@ -143,21 +154,22 @@ func start(clientID int) event {
 }
 
 // emit event with event specific values
-func (e *event) emit() {
+func (e *event) emit(clientID int) {
 	e.Timestamp = timestamp()
 	e.EventID++
-	value := 10 + rand.Intn(90)
+	value := 10 + randPool[clientID].Intn(90)
 	errors := 0
-	if rand.Float64() < 0.1 {
-		errors = 1 + rand.Intn(value/10)
+	if randPool[clientID].Float64() < 0.1 {
+		errors = 1 + randPool[clientID].Intn(value/10)
 	}
 
 	e.Data = data{value, errors}
 }
 
 // add network delays and notwork outage buffering
-func (e event) delay(buffer map[string][]event) event {
-	delay := int(rand.NormFloat64()*e.metadata.eventIntervalStddev) + e.metadata.avgEventIntervalMs // simulate intervals between clicks
+func (e event) delay(clientID int, buffer map[string][]event) event {
+	// simulate intervals between clicks
+	delay := int(randPool[clientID].NormFloat64()*e.metadata.eventIntervalStddev) + e.metadata.avgEventIntervalMs
 
 	bufStart := e.metadata.bufferedStart
 	bufEnd := bufStart + e.metadata.bufferedNumEvents
@@ -207,19 +219,14 @@ func (e event) publish() {
 	Worker pool
 */
 
-type job struct {
-	ID    int
-	delay int
-}
-
-func worker(jobs chan job, workerID int, wg *sync.WaitGroup) {
+func worker(jobs chan int, workerID int, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
-		job, ok := <-jobs
+		jobID, ok := <-jobs
 		if ok {
-			log.Debug("Worker ", workerID, " starting job ", job.ID, " with delay ", job.delay)
-			session(job.ID, job.delay)
-			log.Debug("Worker ", workerID, " finished job ", job.ID)
+			log.Debug("Worker ", workerID, " triggering session ", jobID)
+			session(jobID)
+			log.Debug("Worker ", workerID, " finished session ", jobID)
 		} else {
 			log.Debug("Worker ", workerID, " done")
 			break
@@ -233,7 +240,7 @@ func worker(jobs chan job, workerID int, wg *sync.WaitGroup) {
 
 func main() {
 	var wg sync.WaitGroup
-	jobs := make(chan job)
+	jobs := make(chan int)
 
 	// Create a pool of workers
 	for i := 0; i < workers; i++ {
@@ -243,12 +250,11 @@ func main() {
 
 	// Fill the job list for number of sessions
 	for i := 0; i < sessions; i++ {
-		jobs <- job{i, rand.Intn(sessionDelayMs)}
+		jobs <- i
 	}
 
 	close(jobs)
-
 	wg.Wait()
-	// kafkaWriter.Close()
+
 	log.Info("Done")
 }
