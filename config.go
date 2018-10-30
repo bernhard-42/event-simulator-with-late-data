@@ -26,7 +26,7 @@ type Kafka struct {
 
 // Model holds the parameters for the simulation
 type Model struct {
-	AvgNumEvents        int     `json:"avgNumEvents"`
+	MaxNumEvents        int     `json:"maxNumEvents"`
 	MinNumEvents        int     `json:"minNumEvents"`
 	AvgEventIntervalMs  int     `json:"avgEventIntervalMs"`
 	EventIntervalStddev int     `json:"eventIntervalStddev"`
@@ -60,7 +60,7 @@ func ParseConfig(configFile string) Config {
 			"localhost:9092", /* broker */
 		},
 		Model{
-			50,   /* AvgNumEvents */
+			50,   /* MaxNumEvents */
 			5,    /* MinNumEvents */
 			5000, /* AvgEventIntervalMs */
 			5000, /* EventIntervalStddev */
@@ -108,7 +108,7 @@ func (c Config) String() string {
 	result += fmt.Sprintf("        broker: %s\n", c.Kafka.Broker)
 	result += fmt.Sprintf("        topic: %s\n", c.Kafka.Topic)
 	result += "    model: \n"
-	result += fmt.Sprintf("        avgNumEvents: %d\n", c.Model.AvgNumEvents)
+	result += fmt.Sprintf("        maxNumEvents: %d\n", c.Model.MaxNumEvents)
 	result += fmt.Sprintf("        minNumEvents: %d\n", c.Model.MinNumEvents)
 	result += fmt.Sprintf("        avgEventIntervalMs: %d\n", c.Model.AvgEventIntervalMs)
 	result += fmt.Sprintf("        eventIntervalStddev: %d\n", c.Model.EventIntervalStddev)

@@ -6,7 +6,7 @@ The simulator emits events in realtime controlled by a simple model:
 
 - There are `n` workers that create `m` sessions
 - Each session is controlled by four parameters
-    - *Average number of events*: 
+    - *Maximum number of events*: Upper limit of session lenght 
     - *Minimum number of events*: avoid empty sessions
     - *Average event interval in millisec*: the average time between two events in one session
     - *Standard deviation of event intervals*: controls the variance of interval lenghts
@@ -85,7 +85,7 @@ A json config file can be provided:
             "broker": "master1:6667"
         },
         "model": {
-            "avgNumEvents": 40,
+            "maxNumEvents": 40,
             "minNumEvents": 5,
             "mobileRatio": 0.75,
             "bufferdRatio": 0.2,
