@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"./kafkawriter"
+	"./randpool"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -22,7 +23,7 @@ var (
 	sessions       int
 	sessionDelayMs int
 	model          Model
-	randPool       []RandPool
+	randPool       []randpool.RandPool
 	kafkaWriter    kafkawriter.KafkaWriter
 )
 
@@ -39,9 +40,9 @@ func init() {
 
 	rand.Seed(c.Seed)
 
-	randPool = []RandPool{}
+	randPool = []randpool.RandPool{}
 	for i := 0; i < sessions; i++ {
-		rp := CreateRandPool(sessions*model.MaxNumEvents*10, sessions*model.MaxNumEvents)
+		rp := randpool.Create(sessions*model.MaxNumEvents*10, sessions*model.MaxNumEvents)
 		randPool = append(randPool, *rp)
 	}
 	kafkaWriter = kafkawriter.Create(c.Kafka.Broker, c.Kafka.Topic)
