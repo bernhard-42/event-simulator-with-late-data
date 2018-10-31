@@ -96,24 +96,13 @@ func ParseConfig(configFile string) Config {
 }
 
 func (c Config) String() string {
-	result := "Configration:\n"
-	result += fmt.Sprintf("    workers: %d\n", c.Workers)
-	result += fmt.Sprintf("    sessions: %d\n", c.Sessions)
-	result += fmt.Sprintf("    SessionDelayMs: %d\n", c.SessionDelayMs)
-	result += fmt.Sprintf("    seed: %d\n", c.Seed)
-	result += "    logging: \n"
-	result += fmt.Sprintf("        logLevel: %s\n", c.Logging.LogLevelStr)
-	result += fmt.Sprintf("        logFile: %s\n", c.Logging.LogFileStr)
-	result += "    kafka: \n"
-	result += fmt.Sprintf("        broker: %s\n", c.Kafka.Broker)
-	result += fmt.Sprintf("        topic: %s\n", c.Kafka.Topic)
-	result += "    model: \n"
-	result += fmt.Sprintf("        maxNumEvents: %d\n", c.Model.MaxNumEvents)
-	result += fmt.Sprintf("        minNumEvents: %d\n", c.Model.MinNumEvents)
-	result += fmt.Sprintf("        avgEventIntervalMs: %d\n", c.Model.AvgEventIntervalMs)
-	result += fmt.Sprintf("        eventIntervalStddev: %d\n", c.Model.EventIntervalStddev)
-	result += fmt.Sprintf("        avgNwDelayMs: %d\n", c.Model.AvgNwDelayMs)
-	result += fmt.Sprintf("        mobileRatio: %f\n", c.Model.MobileRatio)
-	result += fmt.Sprintf("        bufferdRatio: %f\n", c.Model.BufferdRatio)
+	result := ""
+	result += fmt.Sprintf("global: {workers: %d, sessions: %d, SessionDelayMs: %d, seed: %d}", c.Workers, c.Sessions, c.SessionDelayMs, c.Seed)
+	result += fmt.Sprintf("logging: {logLevel: %s, logFile: %s}", c.Logging.LogLevelStr, c.Logging.LogFileStr)
+	result += fmt.Sprintf("kafka: {broker: %s, topic: %s}", c.Kafka.Broker, c.Kafka.Topic)
+	result += fmt.Sprintf("model: {maxNumEvents: %d, minNumEvents: %d, avgEventIntervalMs: %d, "+
+		"eventIntervalStddev: %d, avgNwDelayMs: %d, mobileRatio: %f, bufferdRatio: %f}",
+		c.Model.MaxNumEvents, c.Model.MinNumEvents, c.Model.AvgEventIntervalMs,
+		c.Model.EventIntervalStddev, c.Model.AvgNwDelayMs, c.Model.MobileRatio, c.Model.BufferdRatio)
 	return result
 }
