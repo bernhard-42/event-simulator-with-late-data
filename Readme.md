@@ -41,7 +41,8 @@ A simple example for 10 workers creating 10 sessions, i.e. one session per worke
 
 ![](./docs/10-sessions.png)
 
-The 10 sessions are color coded and ran in parallel. For session 2 (green) the event stream stalled at about 60 sec and recovered at about 130 sec by batch sending the buffered events (see bottom graph and compare with top graph). It then continues as normal.
+The 10 sessions are color coded and ran in parallel. For session 9 (blue) the event stream stalled at about 70 sec and recovered at about 150 sec by batch sending the buffered events. Afterwards it continues normally (see bottom graph and compare with top graph). 
+Similar situation for session 5 (brown).
 
 A more thorough analysis via [pandas](https://pandas.pydata.org/) and a 100 session sample can be found in [EvalSimulatedEvents.ipynb](./docs/EvalSimulatedEvents.ipynb).
 
