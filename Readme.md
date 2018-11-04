@@ -67,7 +67,7 @@ Install `eventsim`
     $GOBIN/eventsim -h
     # Usage of /Users/bernhard/Development/go/bin/eventsim:
     # -config string
-    #        config json file (default "./config.json")
+    #        config yaml file (default "./config.yaml")
 
 ## Configuration
 
