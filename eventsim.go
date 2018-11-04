@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	var configFile = flag.String("config", "./config.json", "config json file")
+	var configFile = flag.String("config", "./config.yaml", "config json file")
 	flag.Parse()
 
 	c := ParseConfig(*configFile)

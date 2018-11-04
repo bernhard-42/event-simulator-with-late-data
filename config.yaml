@@ -1,0 +1,18 @@
+workers: 10
+sessions: 10
+sessionDelayMs: 10000
+seed: 50
+kafka:
+  broker: master1:6667
+  topic: sessions
+logging:
+  logFile: ./log.txt
+  logLevel: debug
+model:
+  avgEventIntervalMs: 5000
+  avgNwDelayMs: 10
+  bufferdRatio: 0.2
+  eventIntervalStddev: 5000
+  maxNumEvents: 40
+  minNumEvents: 5
+  mobileRatio: 0.75

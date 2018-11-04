@@ -1,49 +1,49 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 )
 
 // Logging holds the logging configuration
 type Logging struct {
-	LogLevelStr string `json:"logLevel"`
-	LogFileStr  string `json:"logFile"`
+	LogFileStr  string `yaml:"logFile"`
+	LogLevelStr string `yaml:"logLevel"`
 	logLevel    log.Level
 	logFile     *os.File
 }
 
 // Kafka holds the kafka configuration broker and topic
 type Kafka struct {
-	Topic  string `json:"topic"`
-	Broker string `json:"broker"`
+	Topic  string `yaml:"topic"`
+	Broker string `yaml:"broker"`
 }
 
 // Model holds the parameters for the simulation
 type Model struct {
-	MaxNumEvents        int     `json:"maxNumEvents"`
-	MinNumEvents        int     `json:"minNumEvents"`
-	AvgEventIntervalMs  int     `json:"avgEventIntervalMs"`
-	EventIntervalStddev int     `json:"eventIntervalStddev"`
-	AvgNwDelayMs        int     `json:"avgNwDelayMs"`
-	MobileRatio         float64 `json:"mobileRatio"`
-	BufferdRatio        float64 `json:"bufferdRatio"`
+	MaxNumEvents        int     `yaml:"maxNumEvents"`
+	MinNumEvents        int     `yaml:"minNumEvents"`
+	AvgEventIntervalMs  int     `yaml:"avgEventIntervalMs"`
+	EventIntervalStddev int     `yaml:"eventIntervalStddev"`
+	AvgNwDelayMs        int     `yaml:"avgNwDelayMs"`
+	MobileRatio         float64 `yaml:"mobileRatio"`
+	BufferdRatio        float64 `yaml:"bufferdRatio"`
 }
 
 // Config holds defaults and custom configurations
 type Config struct {
-	Workers        int     `json:"workers"`
-	Sessions       int     `json:"sessions"`
-	SessionDelayMs int     `json:"sessionDelayMs"`
-	Seed           int64   `json:"seed"`
-	Logging        Logging `json:"logging"`
-	Kafka          Kafka   `json:"kafka"`
-	Model          Model   `json:"model"`
+	Workers        int     `yaml:"workers"`
+	Sessions       int     `yaml:"sessions"`
+	SessionDelayMs int     `yaml:"sessionDelayMs"`
+	Seed           int64   `yaml:"seed"`
+	Logging        Logging `yaml:"logging"`
+	Kafka          Kafka   `yaml:"kafka"`
+	Model          Model   `yaml:"model"`
 }
 
 // ParseConfig converts json config file to a struct
@@ -69,8 +69,8 @@ func ParseConfig(configFile string) Config {
 			0.1,  /* BufferdRatio */
 		},
 	}
-	if jsonconf, err := ioutil.ReadFile(configFile); err == nil {
-		err := json.Unmarshal(jsonconf, &config)
+	if yamlconf, err := ioutil.ReadFile(configFile); err == nil {
+		err := yaml.Unmarshal(yamlconf, &config)
 		if err == nil {
 			switch config.Logging.LogFileStr {
 			case "stdout":
@@ -97,11 +97,11 @@ func ParseConfig(configFile string) Config {
 
 func (c Config) String() string {
 	result := ""
-	result += fmt.Sprintf("global: {workers: %d, sessions: %d, SessionDelayMs: %d, seed: %d}", c.Workers, c.Sessions, c.SessionDelayMs, c.Seed)
-	result += fmt.Sprintf("logging: {logLevel: %s, logFile: %s}", c.Logging.LogLevelStr, c.Logging.LogFileStr)
-	result += fmt.Sprintf("kafka: {broker: %s, topic: %s}", c.Kafka.Broker, c.Kafka.Topic)
-	result += fmt.Sprintf("model: {maxNumEvents: %d, minNumEvents: %d, avgEventIntervalMs: %d, "+
-		"eventIntervalStddev: %d, avgNwDelayMs: %d, mobileRatio: %f, bufferdRatio: %f}",
+	result += fmt.Sprintf("Global: {Workers: %d, Sessions: %d, SessionDelayMs: %d, Seed: %d}, ", c.Workers, c.Sessions, c.SessionDelayMs, c.Seed)
+	result += fmt.Sprintf("Logging: {LogLevel: %s, LogFile: %s}, ", c.Logging.LogLevelStr, c.Logging.LogFileStr)
+	result += fmt.Sprintf("Kafka: {Broker: %s, Topic: %s}, ", c.Kafka.Broker, c.Kafka.Topic)
+	result += fmt.Sprintf("Model: {MaxNumEvents: %d, MinNumEvents: %d, AvgEventIntervalMs: %d, "+
+		"EventIntervalStddev: %d, AvgNwDelayMs: %d, MobileRatio: %f, BufferdRatio: %f}",
 		c.Model.MaxNumEvents, c.Model.MinNumEvents, c.Model.AvgEventIntervalMs,
 		c.Model.EventIntervalStddev, c.Model.AvgNwDelayMs, c.Model.MobileRatio, c.Model.BufferdRatio)
 	return result
